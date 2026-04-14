@@ -17,6 +17,8 @@ LIST_MARKER = re.compile(r'^\s*([-•*]|\d+\.)\s')
 HEADING = re.compile(r'^\s*#+\s')
 BOLD_HEADING = re.compile(r'^\s*\*\*')
 SEPARATOR = re.compile(r'^\s*---\s*$')
+CODE_FENCE = re.compile(r'^\s*```')
+TABLE_ROW = re.compile(r'^\s*\|')
 BLANK = re.compile(r'^\s*$')
 
 
@@ -28,7 +30,15 @@ def is_continuation(line: str) -> bool:
         or BOLD_HEADING.match(line)
         or LIST_MARKER.match(line)
         or SEPARATOR.match(line)
+        or CODE_FENCE.match(line)
+        or TABLE_ROW.match(line)
     )
+
+
+def ends_sentence(line: str) -> bool:
+    """Return True when a line should be treated as sentence-complete."""
+    stripped = line.rstrip()
+    return stripped.endswith('.') or SENTENCE_ENDINGS.search(stripped) is not None
 
 
 def fix_bullet_markers(text: str) -> str:
@@ -44,16 +54,33 @@ def fix_broken_lines(text: str) -> str:
     lines = text.splitlines()
     result = []
     i = 0
+    in_code_fence = False
+
     while i < len(lines):
         line = lines[i]
+
+        # Keep fenced code blocks exactly as-is.
+        if CODE_FENCE.match(line):
+            in_code_fence = not in_code_fence
+            result.append(line)
+            i += 1
+            continue
+
+        if in_code_fence:
+            result.append(line)
+            i += 1
+            continue
+
         # Keep joining while current line ends without sentence termination
         # and the next line is a continuation
         while (
             i + 1 < len(lines)
-            and not SENTENCE_ENDINGS.search(line)
+            and not ends_sentence(line)
             and not BLANK.match(line)
             and not HEADING.match(line)
             and not SEPARATOR.match(line)
+            and not TABLE_ROW.match(line)
+            and not CODE_FENCE.match(lines[i + 1])
             and is_continuation(lines[i + 1])
         ):
             i += 1
